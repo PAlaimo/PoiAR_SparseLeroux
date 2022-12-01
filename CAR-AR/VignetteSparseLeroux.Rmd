@@ -1,0 +1,473 @@
+---
+title: "Sparse spatio-temporal Leroux-AR in STAN"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+bibliography: biblio.bib
+---
+
+<style type="text/css">
+body{ /* Normal  */
+      font-size: 14px;
+  }
+h1.title {
+  font-size: 30px;
+  color: black;
+  font-weight: bold;
+}
+h1 { /* Header 1 */
+    font-size: 25px;
+  color: black;
+  font-weight: bold;
+}
+h2 { /* Header 2 */
+    font-size: 20px;
+  color: black;
+  font-weight: bold;
+}
+h3 { /* Header 3 */
+    font-size: 15px;
+  color: black;
+  font-weight: bold;
+}
+code.r{ /* Code block */
+    font-size: 14px;
+}
+pre, code {
+    color: 	#1B0F0E;
+  }
+</style>
+
+
+\pagenumbering{gobble} 
+\pagenumbering{arabic} 
+
+
+
+```{r setup, include=FALSE, cache=T}
+knitr::opts_chunk$set(echo = TRUE, cache=T, fig.align = "center",
+                      fig.width=7, fig.height=4)
+```
+
+There is a rich literature on *Gaussian Markov Random Fields* and *Conditional Auto Regressive* (CAR) priors that suite the modeling of dependent random effects over a network. They have seen wide applicability in the disease mapping context, and much interest has been recently devoted to their extension in the space-time setting.
+We here consider the space-time extension of the Leroux model originally proposed by [@rushworth2014] and its sparse and efficient implementation in STAN.
+
+## The Leroux model
+Let $\phi_{s}, \;s=1,\dots,l$ be the set of Gaussian spatial random effects over a discrete domain $\mathcal{S}=\left\lbrace \boldsymbol{s}_1, \dots, \boldsymbol{s}_l\right\rbrace$.
+Let $\boldsymbol{W}$ be a $l\times l$ adjacency matrix for the locations in $\mathcal{S}$, whose elements $w_{ij}$ are $>0$ if and only if $i\neq j$ and $i\sim j$ (location $\boldsymbol{s}_i$ is a neighbor of location $\boldsymbol{s}_j$), and $0$ otherwise. Notice that each location is not a neighbor to itself.
+
+The Leroux model extends the typical ICAR specification through a convex combination of its precision matrix with that of a Multivariate Gaussian with independent components. This is achieved through the inclusion of a \textit{spatial smoothing} coefficient $\alpha\in (0, 1)$. 
+It regulates the extent of the spatial dependence and induces the following proper joint prior:
+$$\boldsymbol{\phi} \sim \mathcal{N}_l\left(\boldsymbol{0},\; \sigma^2\cdot\boldsymbol{Q}(\alpha,\,\boldsymbol{W})^{-1}\right),$$
+where $\sigma^2>0$ and $$\boldsymbol{Q}(\alpha,\,\boldsymbol{W})=\left( \alpha\cdot(\boldsymbol{D}-\boldsymbol{W}) + (1-\alpha)\boldsymbol{I}_l\right).$$
+
+This yields the conditional mean $$\mathbb{E}\left[ \phi_{i}|\boldsymbol{\phi}_{-i}\right]=\frac{\alpha}{N_i+1-\alpha}\sum_{j\sim i}\phi_{j}.$$ The Leroux model recovers the *independent* and *ICAR* settings for $\alpha=0$ and $\alpha=1$, respectively.
+
+### Sparse implementation of the Leroux model
+We implement the model in `R` [@R-base] via `STAN` [@stan].
+Implementation of this model require computing the determinant and quadratic form of the $l\times l$ matrix $\boldsymbol{Q}(\alpha, \boldsymbol{W})$. This can become computationally expensive in many modrn applications, that often deal with $l$ fairly large (at least $l>100$).
+
+This bottleneck is typical of many others CAR specification (proper CAR, etc.) and it requires the adoption of ad-hoc strategies to estimate the model in a reasonable amount of time [@jin2005].
+We can do so exploiting the inherent sparsity pattern in $\boldsymbol{Q}(\alpha, \boldsymbol{W})$, deriving from the sparsity in $\boldsymbol{W}$.
+
+- Only few entries of $\boldsymbol{Q}(\alpha, \boldsymbol{W})$ are different from zero and we can significantly speed up the evaluation by computing only the non-zero entries
+- We  can draw exploit a basic matrix manipulation to derive an efficient computational strategy to evaluate the determinant of $\boldsymbol{Q}(\alpha, \boldsymbol{W})$. Indeed, we have that $$\boldsymbol{Q}(\alpha,\boldsymbol{W}) = \left(\boldsymbol{I}_l-\alpha\left(\boldsymbol{W}+\boldsymbol{I}_l-\boldsymbol{D}\right)\right)$$and, by basic linear algebra properties: 
+$$|\boldsymbol{Q}(\alpha,\boldsymbol{W})|\propto \prod_{i=1}^l(1-\alpha\lambda_i),$$
+where $\lambda_i=1,\dots, l$ are the eigenvalues of $\left(\boldsymbol{W}+\boldsymbol{I}_l-\boldsymbol{D}\right)$. These do not vary from iteration to iteration and can be computed only once at the beginning. 
+
+### Example
+We consider the well-known *lip-cancer* purely spatial data. They summarise the overall lip cancer cases and possible covariate risk factors for the period 1975 to 1986, for $l=56$ districts in Scotland.
+
+We will use the following information:
+
+- `observed`: number of recorded lip cancer cases $y_s, s=1,\dots,l$.
+- `expected`: expected number of lip cancer cases according to the indirect standardisation using Scotland-wide disease rates $o_s, s=1,\dots,l$.
+- `pcaff`: the percentage of the workforce employed in agriculture, fishing and forestry. We use it under the `log1p` transform and scaling to get $x_s, s=1,\dots,l$.
+
+We consider a typical Poisson regression with spatial random effects:
+$$y_s \sim Poi(\lambda_s),\quad \log(\lambda_s)= \log(o_s) + \beta_0 + \beta_1\cdot x_s + \phi_s$$
+
+where $\phi_s$ is modeled according to the Leroux model.
+
+The data can be loaded from the `CARBayes` and  `CARBayesData` packages.
+We will make use also of the other following packages.
+
+```{r, echo=F, warning=F, message=FALSE}
+require(CARBayesdata)
+require(CARBayes)
+require(tidyverse)
+require(magrittr)
+require(rstan)
+require(spdep)
+require(shinystan)
+require(shapefiles)
+require(sf)
+
+```
+
+We load the data and combine them.
+
+```{r, warning=F, message=FALSE}
+# Loading raw data
+data("lipdata")
+data("lipshp")
+data("lipdbf")
+
+# Combining data
+lipdbf$dbf <- lipdbf$dbf[ ,c(2,1)]
+data.combined <- combine.data.shapefile(data=lipdata, shp=lipshp, dbf=lipdbf) %>% st_as_sf()
+```
+
+We derive the neighboring structure.
+
+```{r, warning=F, message=FALSE}
+# Neighboring matrix
+Wnb <- poly2nb(data.combined)
+W <- nb2mat(Wnb, zero.policy = TRUE, style = "B")
+```
+
+Let us visualize the log-relative risks and the log-pcaff covariate.
+
+```{r, echo=F, warning=F, message=FALSE}
+p1 <- data.combined %>% ggplot() + 
+  geom_sf(aes(fill=log1p(observed/expected))) + 
+  theme_bw() + 
+  labs(fill="log(1 + risk)")
+
+p2 <- data.combined %>% ggplot() + geom_sf(aes(fill=log1p(pcaff))) + 
+  theme_bw() + 
+  labs(fill="log(1 + pcaff)")
+
+gridExtra::grid.arrange(p1, p2, nrow=1)
+```
+
+We will fit to those data the Leroux and its sparse version, available in the folder as *Leroux.stan* and *Leroux_Sparse.stan*. The core of the sparse version is the following likelihood function and the corresponding determinant computation. This implementation starts from the sparse version of the *proper CAR* by [@joseph2016].
+The eigen-values $\lambda_i$ and the sparse versions `W_sparse` and `ID_sparse` of $\boldsymbol{W}$ and $(\boldsymbol{I}-\boldsymbol{D})$ can be computed in advance and given in input or evaluated in the transformed data section.
+
+
+```{r, warning=F, message=FALSE, eval=F}
+functions {
+  real sparse_Leroux_lpdf(vector phi, real alpha, int[,] W_sparse, vector W_weight, 
+                          vector ID_sparse, real sumlogdet, int n, int W_n) {
+      row_vector[n] phit_ID; // phi' * D
+      row_vector[n] phit_W; // phi' * W
+
+      phit_ID = (phi .* ID_sparse)';
+      phit_W = rep_row_vector(0, n);
+      for (i in 1:W_n) {
+        phit_W[W_sparse[i, 1]] = phit_W[W_sparse[i, 1]] + W_weight[i]*phi[W_sparse[i, 2]];
+        phit_W[W_sparse[i, 2]] = phit_W[W_sparse[i, 2]] + W_weight[i]*phi[W_sparse[i, 1]];
+      }
+    
+      return 0.5 * (sumlogdet
+                    - (phi' * phi - alpha * (phit_ID * phi + phit_W * phi)));
+  }
+}
+
+data {  ...  }
+
+parameters {  ...  }
+
+
+model {
+        ...
+  
+        // CAR priors
+        {
+          vector[N] ldet_terms;
+          real sumlogdet;
+
+          // CAR determinant
+          for (i in 1:N){
+            ldet_terms[i] = log1m(alpha * lambda[i]);
+          }  
+          sumlogdet = sum(ldet_terms);
+          // CAR prior
+          phi ~ sparse_Leroux(alpha, W_sparse, W_weight, ID_sparse, sumlogdet, N, W_n);
+        }
+        
+        ...
+
+    }
+```
+
+In my implementation the sparse representations are computed in the `transformed data` section of the STAN code.
+We then prepare the data for input in STAN.
+
+```{r, warning=F, message=FALSE}
+# Data
+N <- nrow(data.combined)
+O <- data.combined$observed
+E <- data.combined$expected
+X <- model.matrix(~., 
+                  data=lipdata %>% dplyr::select(pcaff) %>% 
+                    mutate(across(everything(), function(x) scale(log1p(x)))))
+
+# Data for the Leroux
+lipList <- list(N = N,
+                Y = O,
+                lOff = log(E),
+                W = W,
+                k = ncol(X),
+                X = X)
+
+# Data for the Sparse Leroux
+lipListSp <- list(N = N,
+                Y = O,
+                lOff = log(E),
+                W = W,
+                W_n = sum(W[upper.tri(W)]>0),
+                k = ncol(X),
+                X = X)
+```
+
+We can then setup the STAN options and compile the STAN code.
+
+```{r, warning=F, message=FALSE}
+
+# Setting up STAN options
+rstan_options(auto_write = TRUE)
+n_iter <- 3000
+n_chains <- 1
+n_cores <- max(n_chains, parallel::detectCores()-1)
+
+# Stan compilation
+stan_CodeLer <- stan_model("Leroux.stan")
+stan_CodeLerSp <- stan_model("Leroux_Sparse.stan")
+
+```
+
+Finally, we fit the two versions of the model on the data and compare the execution times.
+
+
+```{r, warning=F, message=FALSE}
+
+fit_Ler <- sampling(stan_CodeLer, data = lipList, 
+                    chains = n_chains, iter = n_iter, 
+                    cores = n_cores,
+                    pars = c("lm", "P"), include=F, seed=111)
+fit_LerSp <- sampling(stan_CodeLerSp, data = lipListSp, 
+                      chains = n_chains, iter = n_iter, 
+                      cores = n_cores,
+                      pars = c("lm"), include=F, seed=111)
+
+```
+
+The second version provided the results in way less time ($\approx 1/5$), yielding almost identical inferences as shown here below.
+
+```{r, warning=F, message=FALSE}
+
+betas <- paste0("beta[", 1:(ncol(X)), "]")
+cars <- c("alpha", "sigmac")
+
+# Check divergences
+np_Ler <- bayesplot::nuts_params(fit_Ler)
+np_LerSp <- bayesplot::nuts_params(fit_LerSp)
+
+# The summary
+sumLer <- summary(fit_Ler, pars=c(betas, cars))
+sumLerSp <- summary(fit_LerSp, pars=c(betas, cars))
+sumLer$summary
+sumLerSp$summary
+
+
+# Extracting pars
+pPars <- rstan::extract(fit_Ler, permuted = FALSE, pars=c(betas, cars))
+pParsSp <- rstan::extract(fit_LerSp, permuted = FALSE, pars=c(betas, cars))
+
+
+p1 <- bayesplot::mcmc_combo(pPars,
+                      np=np_Ler)
+p2 <- bayesplot::mcmc_combo(pParsSp,
+                      np=np_LerSp)
+
+gridExtra::grid.arrange(p1, p2, nrow=1)
+
+```
+
+
+## The Leroux-AR model
+The Leroux-AR space-time extension connects $T$ temporal slices of spatial random effects $\boldsymbol{\Phi}=\left[\boldsymbol{\phi_1},\dots,\boldsymbol{\phi_T}\right]$ through a first-order auto-regressive structure:
+
+$$\boldsymbol{\phi}_1\sim \mathcal{N}_l \left( \boldsymbol{0},\; \sigma^2 \cdot \boldsymbol{Q}\left(\alpha, \boldsymbol{W}\right)^{-1}\right)$$
+$$\boldsymbol{\phi}_t\,|\,\boldsymbol{\phi}_{t-1},\dots,\boldsymbol{\phi}_1\sim \mathcal{N}_l\left( \rho\cdot\boldsymbol{\phi}_{t-1},\, \sigma^2\cdot\boldsymbol{Q}\left(\alpha, \boldsymbol{W}\right)^{-1}\right),\; t=2,\dots,T.$$
+
+The parameter $0<\rho<1$ is the temporal auto-regressive coefficient, controlling for temporal dependence. We denote with $\boldsymbol{\theta}=(\alpha, \rho, \sigma)$ the vector of coefficients on which the Leroux-AR specification depends on.
+
+### The non-centered parametrization
+
+STAN benefits from non-centered parametrization of parameters and random effects. It improves the geometry of the posterior and facilitates its exploration.
+Therefore, when coding the Leroux-AR in STAN it can be extremely beneficial sampling independent spatial vectors in the `model block` and then induce the temporal dependence across the spatial vectors at different times in the `transformed parameters block`.
+In practice, we must create some auxiliary vectors $\boldsymbol{\phi}_t^*$ such that:
+
+$$\boldsymbol{\phi}^*_t\, \sim \, \mathcal{N}\left(\boldsymbol{0}\,,\,\boldsymbol{Q}\left(\alpha, \boldsymbol{W}\right)^{-1}\right), \quad t=1,\dots,T$$
+
+and then evaluate $\boldsymbol{\phi}_1\, = \, \boldsymbol{\phi}_1^{*}$ and:
+
+$$\quad \boldsymbol{\phi}_t\, = \, \rho\cdot\boldsymbol{\phi}_{t-1} + \boldsymbol{\phi}_t^{*}, \quad t=2,\dots, T$$
+
+### Example
+
+In this application we consider the number of weekly COVID-19 cases in the $33$ districts of London occurred in the six weeks that go from mid-September and the beginning of November $2020$. The data are provided in the github folder.
+
+We will use the following information:
+
+- `Y`: number of weekly cases in each district $y_{st},\; s=1,\dots,l,\; t=1,\dots,T$.
+- `popn`: population size of each district $p_s,\; s=1,\dots,l$.
+- `popden`: population density of each district. We apply a log-transform and scale the variable to get $x_{st},\; s=1,\dots,l,\; t=1,\dots,T$.
+
+We load the data.
+
+```{r, warning=F, message=F}
+
+# London cases
+load("LondonData.RData")
+
+# London map
+load("LondonMap.RData")
+
+```
+
+We can compute the neighboring structure as follows. The snap allows to connect region that would be separated by thin sections of the Thames river.
+
+
+```{r, warning=F, message=F}
+# Computing neighbors
+W0 <- sfdep::st_contiguity(londonMap, snap=420)
+W <- spdep::nb2mat(W0, style="B")
+
+```
+
+Let us visualize the caserate each $10^4$ inhabitants in each districts, across the six weeks.
+
+```{r, echo=F, warning=F, message=F}
+
+spatLondon <- londonDat %>% 
+  left_join(londonMap %>% select(areaName, geometry), by="areaName") %>% st_as_sf()
+spatLondon %>% 
+  ggplot() + 
+  geom_sf(aes(fill=Y/popn*10000)) + theme_bw() + 
+  facet_wrap(~wdate) + scale_fill_viridis_c() + 
+  labs(fill=expression("Caserate X 10^4"))
+
+```
+
+We consider a space-time Poisson regression with space-time random effects
+$$y_{st} \sim Poi(\lambda_{st}),\quad \log(\lambda_{st})= \log(o_s) + \beta_0 + \beta_1\cdot x_{st} + \phi_{st}$$
+where the offset $o_s$ is the population size divided by $10^4$ and $\phi_{st}$ is modeled according to the Leroux-AR model.
+
+We will fit to these data the Leroux-AR version, available in the folder as *LerouxAR_Sparse.stan*. It exploits the Leroux sparse representation and adopts the non-centered parametrization. The core of the non-centered parametrization is in the following chunk of STAN code.
+
+```{r, warning=F, message=FALSE, eval=F}
+transformed parameters {
+        ...
+        
+        vector[Nobs] phi;
+
+        phi[tdId[1]] = sigmac*phis[1];
+        for (i in 2:Ntimes)  phi[tdId[i]] = rho*phi[tdId[i-1]] + sigmac*phis[i];
+
+        ...
+    } 
+
+
+model {
+        ...
+  
+        {
+          vector[N] ldet_terms;
+          real sumlogdet;
+
+          // CAR determinant
+          for (i in 1:N){
+            ldet_terms[i] = log1m(alpha * lambda[i]);
+          }  
+          sumlogdet = sum(ldet_terms);
+          
+          // CAR prior
+          for (i in 1:Ntimes) phis[i] ~ sparse_Leroux(alpha, W_sparse, W_weight, 
+                                                      ID_sparse, sumlogdet, N, W_n);
+
+        }
+  
+      ...
+    }
+```
+
+We can prepare the data for input in STAN.
+
+```{r}
+# Data
+Y <- as.integer(londonDat$Y)
+Nobs <- length(Y)
+Ntimes <- as.integer(length(unique(londonDat$wdate)))
+N <- as.integer(length(unique(londonDat$areaName)))
+tdId <- matrix(as.integer(1:(N*Ntimes)),  ncol=N, nrow=Ntimes, byrow = T)
+X <- model.matrix(~., 
+                  data=londonDat %>% dplyr::select(popden) %>% 
+                    mutate(across(everything(), function(x) scale(log(x)))))
+E <- londonDat$popn/10000
+
+# Data for Stan
+datalist <- list(Nobs = Nobs, 
+                 Y = Y, 
+                 lOff = log(E), 
+                 N = N, 
+                 tdId = tdId,
+                 Ntimes=Ntimes, 
+                 W = W, 
+                 W_n = sum(W[upper.tri(W)]>0),
+                 k = ncol(X),
+                 X = X)
+```
+
+We can then setup the STAN options and compile the STAN code.
+
+```{r, warning=F, message=FALSE}
+
+n_iter <- 4000
+n_chains <- 2
+n_cores <- max(n_chains, parallel::detectCores()-1)
+
+# Stan compilation
+stan_CodeLerAR <- stan_model("LerouxAR_Sparse.stan")
+
+```
+
+Finally, we can fit the model and analyze the results. We set `adapt_delta=0.7` only to speed up the fitting in this `.Rmd`, but it is kindly suggested to increase it to improve the convergence.
+
+```{r, warning=F, message=FALSE}
+
+# Fitting -----------------------------------------------
+
+fit_LerAR <- sampling(stan_CodeLerAR, data = datalist, 
+                      chains = n_chains, iter = n_iter, 
+                      cores = n_cores,
+                      pars = c("lm", "phis"), include=F, seed=111,
+                      control = list(adapt_delta=0.7))
+
+# Summary and visualization -----------------------------------------------
+
+betas <- paste0("beta[", 1:(ncol(X)), "]")
+cars <- c("alpha", "sigmac")
+
+# Check divergences
+np_LerAR <- bayesplot::nuts_params(fit_LerAR)
+
+# The summary
+sumLerAR <- summary(fit_LerAR, pars=c(betas, cars))
+sumLerAR$summary
+
+# Extracting pars
+pParsAR <- rstan::extract(fit_LerAR, permuted = FALSE, pars=c(betas, cars))
+
+
+bayesplot::mcmc_pairs(pParsAR,
+                      np=np_LerAR,
+                      off_diag_fun = c("hex"))
+bayesplot::mcmc_combo(pParsAR,
+                      np=np_LerAR)
+
+```
+
