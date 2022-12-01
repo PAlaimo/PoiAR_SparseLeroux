@@ -23,7 +23,7 @@ $$
 $$
 
 where:
-- $\sum\_{i=1}^{\tau} \left( w_i\cdot y\_{\ell (t-i)}\right)$ is a weighted average of the counts observed at the previous $\tau$ times in the same region $\ell$.
+- $\sum\limits\_{i=1}^{\tau} \left( w_i\cdot y\_{\ell (t-i)}\right)$ is a weighted average of the counts observed at the previous $\tau$ times in the same region $\ell$.
 - $\tilde{r}\_{\ell t}>0$ and $b\_{\ell t}>0$ are the time-location specific auto-regressive coefficient and baseline, respectively. The former determines the memory of the process, regulating the impact of the previous count on the current one.
 - $d\_{\ell t}$ is a factor that discounts the overall rate for the proportion of susceptible individuals at each time and in each location. It is key to temper the growth in smaller regions, where full capacity is reached in shorter rimes. Taken a non-reinfection window of $\tilde{\tau}$ times (i.e. the same individual cannot be reinfected within $\tilde{\tau}$ times) it amounts to:
 $$d\_{\ell t} = \frac{\sum\limits\_{j=1}^{\tilde{t}} y\_{\ell (t-j)}}{pop\_{\ell}},\quad \forall \\, \ell\in\mathcal{S}, \quad t=1,\dots, T,$$
