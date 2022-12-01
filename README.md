@@ -11,7 +11,7 @@ We consider two alternative sets of covariates: the level of local restriction i
 
 ## The model
 
-Let $\boldsymbol{Y}=\left[ \boldsymbol{y}\_1,\dots,\boldsymbol{y}\_T\right]$ be the matrix of the $n=(T\times L)$ observed cases, with ${\boldsymbol{y}\_{t}}= y\_{\ell 1}, \dots, y\_{\ell T}$, $t=1,\dots,T$, and $\ell\in\mathcal{S}=\left\lbrace \boldsymbol{\ell}\_1,\dots,\boldsymbol{\ell}\_L\right\rbrace$. We consider an extended version of the Poisson auto-regression to account for the epidemiological and spatial nature of the data.
+Let $\boldsymbol{Y}=\left[ \boldsymbol{y}\_1,\dots,\boldsymbol{y}\_T\right]$ be the matrix of the $n=(T\times L)$ observed cases, with ${\boldsymbol{y}\_{t}}= y\_{\ell 1}, \dots, y\_{\ell T}$, $t=1,\dots,T$, and $\ell\in\mathcal{S}=\left\lbrace \boldsymbol{\ell}\_1,\dots,\boldsymbol{\ell}\_L\right\rbrace$. We consider an extended version of the Poisson auto-regression (Kedem and Fokianos, 2005) to account for the epidemiological and spatial nature of the data.
 
 We assume that the counts at each $\ell\in\mathcal{S}$ and time $t$ depends directly on the counts of the previous time through:
 
@@ -63,4 +63,5 @@ In this project we provide further details and examples in the following folders
 ## Biblio
 
 - Carpenter, Bob, Gelman, Andrew, Hoffman, Matthew D., Lee, Daniel, Goodrich, Ben, Betancourt, Michael, Brubaker, Marcus, Guo, Jiqiang, Li, Peter, and Riddell, Allen. Stan : A Probabilistic Programming Language. United States: N. p., 2017. Web. doi:10.18637/jss.v076.i01. 
+- Kedem, B. and K. Fokianos (2005). Regression models for time series analysis. John Wiley & Sons.
 - Rushworth, Alastair, Duncan Lee, and Richard Mitchell. "A spatio-temporal model for estimating the long-term effects of air pollution on respiratory hospital admissions in Greater London." Spatial and spatio-temporal epidemiology 10 (2014): 29-38.
