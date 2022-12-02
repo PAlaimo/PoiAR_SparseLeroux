@@ -6,8 +6,15 @@ The empirical model we develope is a joint (over multiple areas) Poisson Auto-Re
 
 The model is adopted in a full Bayesian framework and implemented in Stan (Carpenter, 2017). The random effects are modeled through the CAR-AR Leroux model by Rushworth et Al (2014). We provide an efficient implementation of the CAR-AR Leroux prior distribution bases on the sparse representation of the corresponding precision matrix and determinant. We consider the non-centered parametrization to favor the convergence of the No-U-Turn-Sampler (NUTS) implemented in STAN. The model and its estimation has been validated using a substantial simulation study.
 
-Our main application focuses on the weekly COVID-19 cases observed between April 2020 and March 2021 at the local authority district level in England (yet to be published).
-We consider two alternative sets of covariates: the level of local restriction in place in terms of *Tier levels* and the value of the *Google Mobility Indices*. They are used in a novel way to determine the best model for epidemic growth by estimating the reported and hidden cases across space and time.  The model detects substantial spatial and temporal heterogeneity due to policy changes and change in disease dynamics and is able to capture various interesting aspects of the disease epidemiology. More details about the applications are available in the main paper.
+## Content of the Github project
+
+In this project we provide further details and examples in the following folders.
+- **CAR-AR**
+  - Details about the sparse implementation of the CAR Leroux model
+  - Details about the implementation of the space-time CAR-AR Leroux model by Rushworth et Al (2014) in STAN through the non-centered parametrization
+- **STPoiAR**
+  - Application of the proposed space-time Poisson Auto-Regressive model on a set of simulated data
+  - Application on the real data (will be available at the time of the paper publication)
 
 ## The model
 
@@ -50,15 +57,10 @@ $$
 where $\boldsymbol{Q}(\alpha, \boldsymbol{W})=\left(\alpha(\boldsymbol{D}-\boldsymbol{W})+(1-\alpha)\boldsymbol{I}\_L\right)$ is the precision matrix of the Leroux prior, $0<\alpha<1$ is a spatial smoothing parameter and $0<\rho<1$ is the temporal auto-regressive coefficient.
 More details on this spatial and spatio-temporal specification, with the corresponding sparse and efficient implementation in STAN, are provided in the dedicated folder of this project.
 
-## Content of the Github project
+## Application
 
-In this project we provide further details and examples in the following folders.
-- **CAR-AR**
-  - Details about the sparse implementation of the CAR Leroux model
-  - Details about the implementation of the space-time CAR-AR Leroux model by Rushworth et Al (2014) in STAN through the non-centered parametrization
-- **STPoiAR**
-  - Application of the proposed space-time Poisson Auto-Regressive model on a set of simulated data
-  - Application on the real data (will be available at the time of the paper publication)
+Our main application focuses on the weekly COVID-19 cases observed between April 2020 and March 2021 at the local authority district level in England (yet to be published).
+We consider two alternative sets of covariates: the level of local restriction in place in terms of *Tier levels* and the value of the *Google Mobility Indices*. They are used in a novel way to determine the best model for epidemic growth by estimating the reported and hidden cases across space and time.  The model detects substantial spatial and temporal heterogeneity due to policy changes and change in disease dynamics and is able to capture various interesting aspects of the disease epidemiology. More details about the applications are available in the main paper.
 
 ## Biblio
 
