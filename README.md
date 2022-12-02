@@ -64,6 +64,6 @@ We consider two alternative sets of covariates: the level of local restriction i
 
 ## Biblio
 
-- Carpenter, Bob, Gelman, Andrew, Hoffman, Matthew D., Lee, Daniel, Goodrich, Ben, Betancourt, Michael, Brubaker, Marcus, Guo, Jiqiang, Li, Peter, and Riddell, Allen. Stan : A Probabilistic Programming Language. United States: N. p., 2017. Web. doi:10.18637/jss.v076.i01. 
+- Carpenter, Bob, et al. "Stan: A probabilistic programming language." Journal of statistical software 76.1 (2017).
 - Kedem, B. and K. Fokianos (2005). Regression models for time series analysis. John Wiley & Sons.
 - Rushworth, Alastair, Duncan Lee, and Richard Mitchell. "A spatio-temporal model for estimating the long-term effects of air pollution on respiratory hospital admissions in Greater London." Spatial and spatio-temporal epidemiology 10 (2014): 29-38.
